@@ -1,5 +1,4 @@
 import subprocess, os
-print(os.name)
 
 from PySide import QtGui, QtCore, QtNetwork
 
@@ -41,7 +40,7 @@ class SettingsWindow(QtGui.QWidget):
 		self.layout().addRow(QtGui.QLabel('Command list'))
 		self.layout().addRow(QtGui.QLabel('Key'), QtGui.QLabel('Command'))
 		for cmd in commands:
-			self.layout().addRow(QtGui.QLineEdit(cmd['key']), QtGui.QLineEdit(cmd['command']))			
+			self.layout().addRow(QtGui.QLineEdit(cmd['key']), QtGui.QLineEdit(cmd['command']))
 
 class RemoteListener(QtNetwork.QTcpServer):
 	def __init__(self):
@@ -59,7 +58,6 @@ class RemoteListener(QtNetwork.QTcpServer):
 		self.close()
 			
 	def incomingConnection(self, socketDescriptor):
-		print('Incoming connection - that is neat!')
 		self.connections.append(self.ClientConnection(socketDescriptor, self))
 
 	class ClientConnection():

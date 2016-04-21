@@ -36,11 +36,21 @@ class RemoteWindow(QtGui.QWidget):
 		self.client.socket.close()
 		
 	def addCommands(self, commands):
+		while self.commandContainer.count() > 0:
+			item = self.commandContainer.takeAt(0)
+			widget = item.widget()
+			self.commandContainer.removeWidget(widget)
+			widget.setParent(None)
+			del widget
+			del item
+		
 		for c in commands:
 			b = QtGui.QPushButton(c['key'])
 			b.setToolTip(c['command'])
 			b.clicked.connect(partial(self.client.sendCommand, c['key']))
 			self.commandContainer.addWidget(b)
+			
+		self.adjustSize()
 
 class RemoteClient(QtCore.QObject):
 	receivedCommandList = QtCore.Signal(object)
