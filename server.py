@@ -1,63 +1,47 @@
+import subprocess, os
+print(os.name)
+
 from PySide import QtGui, QtCore, QtNetwork
 
 from pymouse import PyMouse
 from pykeyboard import PyKeyboard
 
+from ui import *
+
 commands = [
 	{'key':'cmd', 'command': 'cmd'},
 	{'key':'explorer', 'command': 'explorer'},
-	{'key':'browser', 'command': 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'},
+	{'key':'browser', 'command': '"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"'},
+	{'key':'gnome-calc', 'command': 'gnome-calculator'},
 ]
 
-class ToggleButton(QtGui.QWidget):
-	enabled = QtCore.Signal()
-	disabled = QtCore.Signal()
-	
-	def __init__(self, parent=None):
-		super().__init__(parent)
-		self.setLayout(QtGui.QHBoxLayout())
-		self.layout().setSpacing(0)
-		
-		self.offButton = QtGui.QPushButton('Off')
-		self.offButton.clicked.connect(self.disable)
-		self.layout().addWidget(self.offButton)
-
-		self.onButton = QtGui.QPushButton('On')
-		self.onButton.clicked.connect(self.enable)
-		self.layout().addWidget(self.onButton)
-		
-		pal = self.onButton.palette()
-		self.defaultColor = pal.color(pal.Button)
-		
-	def disable(self):
-		self._setColor(self.onButton, self.defaultColor)
-		self._setColor(self.offButton, QtCore.Qt.red)
-		self.disabled.emit()
-		
-	def enable(self):
-		self._setColor(self.onButton, QtCore.Qt.green)
-		self._setColor(self.offButton, self.defaultColor)
-		self.enabled.emit()
-		
-	def _setColor(self, button, bgColor):
-		pal = button.palette()
-		pal.setColor(pal.Button, bgColor)
-		button.setAutoFillBackground(True)
-		button.setPalette(pal)
-		button.update()
+def getCommandByKey(key):
+	for cmd in commands:
+		if cmd['key'] == key:
+			return cmd
 
 class SettingsWindow(QtGui.QWidget):
+	enabled = QtCore.Signal()
+	disabled = QtCore.Signal()
+
 	def __init__(self):
 		super().__init__()
 		
 		self.setWindowTitle('Facilitator Remote Server')
 		self.setLayout(QtGui.QFormLayout())
+		
+		self.mainToggle = ToggleButton()
+		self.mainToggle.enabled.connect(self.enabled.emit)
+		self.mainToggle.disabled.connect(self.disabled.emit)
+		
+		self.layout().addRow('Server status', self.mainToggle)
+		self.layout().addRow(QtGui.QLabel('--------------'))
 		self.layout().addRow('Allow mouse countrol', ToggleButton())
 		self.layout().addRow('Allow keyboard countrol', ToggleButton())
 		self.layout().addRow(QtGui.QLabel('Command list'))
 		self.layout().addRow(QtGui.QLabel('Key'), QtGui.QLabel('Command'))
 		for cmd in commands:
-			self.layout().addRow(QtGui.QLineEdit(cmd['key']), QtGui.QLineEdit(cmd['command']))
+			self.layout().addRow(QtGui.QLineEdit(cmd['key']), QtGui.QLineEdit(cmd['command']))			
 
 class RemoteListener(QtNetwork.QTcpServer):
 	def __init__(self):
@@ -70,6 +54,9 @@ class RemoteListener(QtNetwork.QTcpServer):
 		if not self.listen(port=1234):
 			raise 'Unable to start server :('
 		print('Listening!')
+			
+	def disable(self):
+		self.close()
 			
 	def incomingConnection(self, socketDescriptor):
 		print('Incoming connection - that is neat!')
@@ -92,17 +79,29 @@ class RemoteListener(QtNetwork.QTcpServer):
 			self.socket.disconnected.connect(self.disconnected)
 			
 		def readyRead(self):
-			data = self.socket.readAll()
-			print('Received: %s' % data)
-			if data == 'command-list':
-				self.socket.write('command-list\tnasa-tlx')
+			data = str(self.socket.readAll()).split('\t')
+			
+			cmd = data.pop(0)
+			if cmd == 'command-list':
+				response = 'command-list'
+				for cmd in commands:
+					response = response + '\t%s,%s' % (cmd['key'], cmd['command'])
+				self.socket.write(response)
+			elif cmd == 'cmd':
+				commandLine = getCommandByKey(data.pop(0))['command']
+				if os.name == 'posix':
+					commandLine = '%s &' % commandLine
+				elif os.name == 'nt':
+					commandLine = 'start %s' % commandLine
+				
+				print(commandLine)
+				subprocess.call(commandLine, shell=True)
 			else:
 				print('Unknown command: %s' % data)
 			
 		def disconnected(self):
 			print('Disconnected')
 			self.socket.deleteLater()
-			exit(0)
 				
 
 
@@ -113,6 +112,8 @@ if __name__ == '__main__':
 	app = QtGui.QApplication(sys.argv)
 	appWindow = SettingsWindow()
 	appWindow.show()
-#	server = RemoteListener()
-#	server.enable()
+	server = RemoteListener()
+	appWindow.enabled.connect(server.enable)
+	appWindow.disabled.connect(server.disable)
+	server.enable()
 	sys.exit(app.exec_())

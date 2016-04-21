@@ -1,4 +1,7 @@
 from PySide import QtGui, QtCore, QtNetwork
+from functools import partial
+
+from ui import *
 
 class RemoteWindow(QtGui.QWidget):
 	def __init__(self):
@@ -6,15 +9,49 @@ class RemoteWindow(QtGui.QWidget):
 		
 		self.setWindowTitle('Facilitator Remote')
 		self.setLayout(QtGui.QVBoxLayout())
+		
+		self.hostBox = QtGui.QLineEdit('localhost')
+		self.portBox = QtGui.QLineEdit('1234')
+		self.connectButton = ToggleButton()
+		self.connectButton.enabled.connect(self.connectToHost)
+		self.connectButton.disabled.connect(self.disconnect)
+		
+		form = QtGui.QFormLayout()
+		form.addRow('Host', self.hostBox)
+		form.addRow('Port', self.portBox)
+		form.addRow('Connection', self.connectButton)
+		self.layout().addLayout(form)
+		
+		self.commandContainer = QtGui.QVBoxLayout()
+		self.layout().addLayout(self.commandContainer)
+		
+		self.client = None
+		
+	def connectToHost(self):
+		self.client = RemoteClient(self.hostBox.text(), int(self.portBox.text()))
+		self.client.receivedCommandList.connect(self.addCommands)
+		self.client.connectToHost()
+		
+	def disconnect(self):
+		self.client.socket.close()
+		
+	def addCommands(self, commands):
+		for c in commands:
+			b = QtGui.QPushButton(c['key'])
+			b.setToolTip(c['command'])
+			b.clicked.connect(partial(self.client.sendCommand, c['key']))
+			self.commandContainer.addWidget(b)
 
 class RemoteClient(QtCore.QObject):
+	receivedCommandList = QtCore.Signal(object)
+	
 	def __init__(self, host, port):
 		super().__init__()
 		self.host = host
 		self.port = port
 		self.socket = None
 		
-	def connect(self):
+	def connectToHost(self):
 		self.socket = QtNetwork.QTcpSocket()
 		self.socket.connected.connect(self.connected)
 		self.socket.disconnected.connect(self.disconnected)
@@ -22,23 +59,35 @@ class RemoteClient(QtCore.QObject):
 		self.socket.connectToHost(self.host, self.port)
 		
 	def connected(self):
-		print('We totally connected... sending some data now')
 		self.socket.write('command-list')
-		print('Data sent, hopefully')
 		
 	def disconnected(self):
 		print('Disconnected!')
-		exit(1)
+		
+	def sendCommand(self, key):
+		self.socket.write('cmd\t%s' % key)
 
 	def readyRead(self):
-		data = self.socket.readAll()
-		print(data)
+		data = str(self.socket.readAll()).split('\t')
+
+		cmd = data.pop(0)
+		if cmd == 'command-list':
+			commandList = []
+			for c in data:
+				c = c.split(',')
+				commandList.append({
+					'key': c[0],
+					'command': c[1],
+				})
+			self.receivedCommandList.emit(commandList)
+		else:
+			print('Unknown message: %s - %s)' % (cmd, data))
 	
 
 if __name__ == '__main__':
 	import sys
 
 	app = QtGui.QApplication(sys.argv)
-	client = RemoteClient('localhost', 1234)
-	client.connect()
+	appWindow = RemoteWindow()
+	appWindow.show()
 	sys.exit(app.exec_())
