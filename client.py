@@ -25,7 +25,18 @@ class RemoteWindow(QtGui.QWidget):
 		self.commandContainer = QtGui.QVBoxLayout()
 		self.layout().addLayout(self.commandContainer)
 		
+		self.keyboardControlButton = QtGui.QPushButton('Keyboard control')
+		self.keyboardControlButton.setCheckable(True)
+		self.commandContainer.addWidget(self.keyboardControlButton)
+		
 		self.client = None
+		self.installEventFilter(self)
+		
+	def eventFilter(self, widget, event):
+#		if not self.keyboardControlButton.isChecked():
+#			if event.type()
+#			return True
+		return super().eventFilter(widget, event)
 		
 	def connectToHost(self):
 		self.client = RemoteClient(self.hostBox.text(), int(self.portBox.text()))

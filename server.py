@@ -7,18 +7,41 @@ from pykeyboard import PyKeyboard
 
 from ui import *
 
-commands = [
-	{'key':'cmd', 'command': 'cmd'},
-	{'key':'explorer', 'command': 'explorer'},
-	{'key':'browser', 'command': '"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"'},
-	{'key':'gnome-calc', 'command': 'gnome-calculator'},
-]
+settings = QtCore.QSettings('Green Light Go', 'Facilitator Remote')
+
+def getCommands():
+	commands = []
+	size = settings.beginReadArray('commands')
+	for i in range(size):
+		settings.setArrayIndex(i)
+		commands.append({
+			'key': settings.value('key'),
+			'command': settings.value('command'),
+		})
+	settings.endArray()
+		
+	return commands
+
+def saveCommands(commands):
+	settings.beginWriteArray('commands')
+	count = 0
+	for details in commands:
+		key = details['key'].strip()
+		command = details['command'].strip()
+		
+		if key != '' or command != '':
+			settings.setArrayIndex(count)
+			settings.setValue('key', key)
+			settings.setValue('command', command)
+			count = count + 1
+	settings.endArray()
 
 def getCommandByKey(key):
+	commands = getCommands()
 	for cmd in commands:
 		if cmd['key'] == key:
 			return cmd
-
+			
 class SettingsWindow(QtGui.QWidget):
 	enabled = QtCore.Signal()
 	disabled = QtCore.Signal()
@@ -39,8 +62,52 @@ class SettingsWindow(QtGui.QWidget):
 		self.layout().addRow('Allow keyboard countrol', ToggleButton())
 		self.layout().addRow(QtGui.QLabel('Command list'))
 		self.layout().addRow(QtGui.QLabel('Key'), QtGui.QLabel('Command'))
-		for cmd in commands:
-			self.layout().addRow(QtGui.QLineEdit(cmd['key']), QtGui.QLineEdit(cmd['command']))
+		
+		self.commandLayout = QtGui.QFormLayout()
+		self.layout().addRow(self.commandLayout)
+
+		addButton = QtGui.QPushButton('+')
+		addButton.clicked.connect(self.addCommand)
+		self.layout().addRow('', addButton)
+		
+		resetButton = QtGui.QPushButton('Reset')
+		resetButton.clicked.connect(self.reset)
+		
+		saveButton = QtGui.QPushButton('Save')
+		saveButton.clicked.connect(self.save)
+		
+		self.layout().addRow(resetButton, saveButton)
+		
+		self.reset()
+		
+	def addCommand(self, key='', cmd=''):
+		self.commandListWidgets.append({
+			'key': QtGui.QLineEdit(key),
+			'command': QtGui.QLineEdit(cmd),
+		})
+		self.commandLayout.addRow(
+			self.commandListWidgets[-1]['key'],
+			self.commandListWidgets[-1]['command'],
+		)
+		
+	def reset(self):
+		self.commandListWidgets = []
+		commands = getCommands()
+		
+		if len(commands) == 0:
+			self.addCommand()
+		else:
+			for cmd in commands:
+				self.addCommand(cmd['key'], cmd['command'])
+			
+	def save(self):
+		commands = []
+		for commandWidgets in self.commandListWidgets:
+			commands.append({
+				'key': commandWidgets['key'].text(),
+				'command': commandWidgets['command'].text(),
+			})
+		saveCommands(commands)
 
 class RemoteListener(QtNetwork.QTcpServer):
 	def __init__(self):
@@ -82,15 +149,13 @@ class RemoteListener(QtNetwork.QTcpServer):
 			cmd = data.pop(0)
 			if cmd == 'command-list':
 				response = 'command-list'
-				for cmd in commands:
+				for cmd in getCommands():
 					response = response + '\t%s,%s' % (cmd['key'], cmd['command'])
 				self.socket.write(response)
 			elif cmd == 'cmd':
 				commandLine = getCommandByKey(data.pop(0))['command']
 				if os.name == 'posix':
 					commandLine = '%s &' % commandLine
-				elif os.name == 'nt':
-					commandLine = 'start %s' % commandLine
 				
 				print(commandLine)
 				subprocess.call(commandLine, shell=True)
@@ -105,7 +170,6 @@ class RemoteListener(QtNetwork.QTcpServer):
 
 if __name__ == '__main__':
 	import sys
-
 	QtGui.QApplication.setStyle('Cleanlooks')
 	app = QtGui.QApplication(sys.argv)
 	appWindow = SettingsWindow()
